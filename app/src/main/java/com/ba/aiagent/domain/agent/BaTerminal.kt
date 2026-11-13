@@ -1,29 +1,48 @@
 package com.ba.aiagent.domain.agent
 
 import com.ba.aiagent.data.local.WorkspaceStore
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import java.io.File
 
 /**
  * BA Terminal — our own terminal, built into this app.
- * One persistent local shell (/system/bin/sh) that lives as long as the
- * app does. No other app needed: no Termux, no Termux:API, no VPS,
- * no root. Commands run on this phone, in the app workspace.
- * The chat agent and the Terminal tab share this one session, so `cd`
- * and shell variables persist between commands.
+ *
+ * The shell runs inside BA Linux (a full Alpine Linux environment on
+ * this phone's own CPU and RAM, via PRoot) whenever the sandbox is
+ * ready — that is the real Termux-like experience: `apk add python3
+ * nodejs git`, real tools, a real package manager. If the sandbox
+ * cannot run on this device, it falls back to the plain system shell.
+ *
+ * One persistent session, shared by the chat agent and the Terminal
+ * tab, so `cd` and shell variables persist between commands.
  */
-class BaTerminal(private val workspace: WorkspaceStore) {
+class BaTerminal(
+    private val workspace: WorkspaceStore,
+    private val linux: BaLinux
+) {
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private val lock = Any()
+    private val startMutex = Mutex()
     private var process: Process? = null
+
+    /** True when the running shell is inside BA Linux. */
+    @Volatile
+    var inLinux = false
+        private set
 
     private val _output = MutableStateFlow(
         "BA Terminal — our own terminal, built into BA AI AGENT.\n" +
-            "Local shell on this phone. No VPS, no root, no other app needed.\n"
+            "First command sets up BA Linux (Alpine on this phone).\n"
     )
     val output: StateFlow<String> = _output.asStateFlow()
 
@@ -39,34 +58,46 @@ class BaTerminal(private val workspace: WorkspaceStore) {
     fun isAlive(): Boolean = synchronized(lock) { process?.isAlive == true }
 
     /** Start the shell if it is not running. Safe to call repeatedly. */
-    fun start() {
-        synchronized(lock) {
-            if (process?.isAlive == true) return
-            try {
-                val proc = ProcessBuilder("/system/bin/sh")
-                    .directory(File(_cwd.value))
-                    .redirectErrorStream(true)
-                    .start()
-                process = proc
-                val t = Thread({
-                    val buf = ByteArray(4096)
-                    try {
-                        val input = proc.inputStream
-                        while (true) {
-                            val n = input.read(buf)
-                            if (n < 0) break
-                            appendOutput(String(buf, 0, n, Charsets.UTF_8))
-                        }
-                    } catch (_: Exception) {
-                        // Shell ended.
-                    }
-                    appendOutput("\n(shell ended — press Restart for a new one)\n")
-                }, "ba-terminal-reader")
-                t.isDaemon = true
-                t.start()
-            } catch (e: Exception) {
-                appendOutput("\nCould not start shell: ${e.message}\n")
+    suspend fun start() = startMutex.withLock {
+        if (process?.isAlive == true) return
+        val useLinux = linux.ensureReady { appendOutput(it) }
+        inLinux = useLinux
+        try {
+            val pb = if (useLinux) {
+                _cwd.value = linux.guestWorkspace
+                ProcessBuilder(linux.prootCommand()).apply {
+                    environment().putAll(linux.guestEnv())
+                }
+            } else {
+                _cwd.value = workspace.root.absolutePath
+                ProcessBuilder("/system/bin/sh").directory(File(_cwd.value))
             }
+            val proc = pb.redirectErrorStream(true).start()
+            process = proc
+            if (useLinux) {
+                appendOutput("\nBA Linux shell started — Alpine Linux, on this phone.\n" +
+                    "Your files live in /workspace. Install tools with: apk add python3 nodejs git\n")
+            } else {
+                appendOutput("\nSystem shell started (BA Linux is not available on this device).\n")
+            }
+            val t = Thread({
+                val buf = ByteArray(4096)
+                try {
+                    val input = proc.inputStream
+                    while (true) {
+                        val n = input.read(buf)
+                        if (n < 0) break
+                        appendOutput(String(buf, 0, n, Charsets.UTF_8))
+                    }
+                } catch (_: Exception) {
+                    // Shell ended.
+                }
+                appendOutput("\n(shell ended — press Restart for a new one)\n")
+            }, "ba-terminal-reader")
+            t.isDaemon = true
+            t.start()
+        } catch (e: Exception) {
+            appendOutput("\nCould not start shell: ${e.message}\n")
         }
     }
 
@@ -74,12 +105,14 @@ class BaTerminal(private val workspace: WorkspaceStore) {
     fun send(raw: String) {
         val command = raw.trimEnd()
         if (command.isBlank()) return
-        start()
-        val toSend = rewriteBareCd(command)
-        trackCd(toSend)
-        _history.value = (_history.value + command).takeLast(100)
-        appendOutput("\n$ $command\n")
-        writeLine(toSend)
+        scope.launch {
+            start()
+            val toSend = rewriteBareCd(command)
+            trackCd(toSend)
+            _history.value = (_history.value + command).takeLast(100)
+            appendOutput("\n$ $command\n")
+            writeLine(toSend)
+        }
     }
 
     /**
@@ -140,23 +173,26 @@ class BaTerminal(private val workspace: WorkspaceStore) {
     }
 
     fun restart() {
-        synchronized(lock) {
-            try {
-                process?.destroyForcibly()
-            } catch (_: Exception) {
+        scope.launch {
+            synchronized(lock) {
+                try {
+                    process?.destroyForcibly()
+                } catch (_: Exception) {
+                }
+                process = null
             }
-            process = null
+            _cwd.value = if (inLinux) linux.guestWorkspace else workspace.root.absolutePath
+            _output.value = "BA Terminal — new shell started.\n"
+            start()
         }
-        _cwd.value = workspace.root.absolutePath
-        _output.value = "BA Terminal — new shell started.\n" +
-            "Local shell on this phone. No VPS, no root, no other app needed.\n"
-        start()
     }
 
-    /** `cd` with no target (or `~`) goes to the workspace, so the shell and the label agree. */
+    /** `cd` with no target goes to the workspace, so the shell and the label agree. */
     private fun rewriteBareCd(command: String): String {
         val t = command.trim()
-        return if (t == "cd" || t == "cd ~") "cd ${workspace.root.absolutePath}" else command
+        return if (t == "cd" || t == "cd ~") {
+            if (inLinux) "cd ${linux.guestWorkspace}" else "cd ${workspace.root.absolutePath}"
+        } else command
     }
 
     /** Track a leading `cd ...` so the prompt label follows the shell. */
@@ -165,16 +201,35 @@ class BaTerminal(private val workspace: WorkspaceStore) {
         if (first != "cd" && !first.startsWith("cd ")) return
         val arg = first.removePrefix("cd").trim()
         if (arg.isEmpty() || arg == "~") {
-            _cwd.value = workspace.root.absolutePath
+            _cwd.value = if (inLinux) linux.guestWorkspace else workspace.root.absolutePath
             return
         }
         if (arg == "-") return // Shell handles OLDPWD; leave the label as-is.
+        if (inLinux) {
+            // Guest paths are lexical only — never touch the host filesystem.
+            _cwd.value = resolveGuestPath(_cwd.value, arg)
+            return
+        }
         val f = if (arg.startsWith("/")) File(arg) else File(_cwd.value, arg)
         try {
             val target = f.canonicalPath
             if (File(target).isDirectory) _cwd.value = target
         } catch (_: Exception) {
         }
+    }
+
+    /** Resolve a guest path lexically (no host filesystem access). */
+    private fun resolveGuestPath(cwd: String, arg: String): String {
+        val parts = mutableListOf<String>()
+        val base = if (arg.startsWith("/")) "" else cwd
+        for (seg in (base + "/" + arg).split("/")) {
+            when (seg) {
+                "", "." -> {}
+                ".." -> if (parts.isNotEmpty()) parts.removeAt(parts.lastIndex)
+                else -> parts += seg
+            }
+        }
+        return "/" + parts.joinToString("/")
     }
 
     private fun writeLine(line: String) {

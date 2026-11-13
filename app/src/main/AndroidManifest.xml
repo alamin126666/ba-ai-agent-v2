@@ -11,6 +11,7 @@
         android:label="BA AI AGENT"
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
+        android:extractNativeLibs="true"
         android:theme="@style/Theme.BaAiAgent">
         <activity
             android:name=".MainActivity"

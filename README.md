@@ -25,10 +25,15 @@ Chat + Agent Mode + Terminal + Skills + Design, all on the phone, no VPS.
   Tools: list/read/write/create/edit (patch)/delete/search files,
   run_command, git_status. Every edit shows a diff (old red / new green)
   and needs Approve. Dangerous commands are blocked.
-- **Terminal** — BA Terminal, our own terminal built into the app
-  (no other app, no VPS, no root): one persistent local shell on
-  the phone. The agent and the Terminal tab share the session, so
-  `cd` sticks between commands. Dangerous commands are blocked.
+- **Terminal** — **BA Linux**, our own full Linux environment built
+  into the app (Alpine Linux + PRoot, no other app, no VPS, no root):
+  a real shell on this phone's CPU and RAM, with the `apk` package
+  manager — `apk add python3 nodejs git` installs real tools, just
+  like Termux's `pkg`. First run unpacks the rootfs once (~4 MB) and
+  runs `apk update`. The agent and the Terminal tab share the session
+  (files live in `/workspace`), so `cd` sticks between commands.
+  Dangerous commands are blocked. On a non-64-bit-ARM device the
+  terminal falls back to the plain system shell.
 - **Skills** — built-in `/plan /fix /review /refactor /explain /test
   /commit /new /docs /ui`, auto-loaded when relevant, plus a Skill Store:
   install a SKILL.md from GitHub or create your own custom skill.

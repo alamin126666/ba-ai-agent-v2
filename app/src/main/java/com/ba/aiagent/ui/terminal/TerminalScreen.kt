@@ -43,6 +43,7 @@ fun TerminalScreen(app: BaAiAgentApp) {
     val output by terminal.output.collectAsState()
     val cwd by terminal.cwd.collectAsState()
     val history by terminal.history.collectAsState()
+    val linuxState by app.linux.state.collectAsState()
     var command by remember { mutableStateOf("") }
     var histIndex by remember { mutableStateOf(-1) }
     var savedDraft by remember { mutableStateOf("") }
@@ -54,7 +55,9 @@ fun TerminalScreen(app: BaAiAgentApp) {
     }
 
     val root = app.workspaceStore.root.absolutePath
-    val shownCwd = if (cwd == root) "~" else if (cwd.startsWith("$root/")) "~" + cwd.removePrefix(root) else cwd
+    val shownCwd = if (terminal.inLinux) {
+        if (cwd == "/workspace") "~" else if (cwd.startsWith("/workspace/")) "~" + cwd.removePrefix("/workspace") else cwd
+    } else if (cwd == root) "~" else if (cwd.startsWith("$root/")) "~" + cwd.removePrefix(root) else cwd
 
     fun historyUp() {
         if (history.isEmpty()) return
@@ -88,10 +91,11 @@ fun TerminalScreen(app: BaAiAgentApp) {
     Scaffold(topBar = { TopAppBar(title = { Text("BA Terminal") }) }) { padding ->
         Column(Modifier.fillMaxSize().padding(padding).padding(16.dp)) {
             Text(
-                "Our own terminal, built into this app — no other app, no VPS, no root. " +
+                "Our own Linux, built into this app — no other app, no VPS, no root. " +
                     "The agent and this tab share one shell, so cd sticks. Dangerous commands are blocked.",
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
+            Text(linuxState, color = Color(0xFF4ADE80), fontFamily = FontFamily.Monospace)
             Spacer(Modifier.height(8.dp))
             Text(
                 "ba@terminal:$shownCwd $",
