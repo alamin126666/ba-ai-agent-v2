@@ -7,6 +7,7 @@ import com.ba.aiagent.data.local.SettingsStore
 import com.ba.aiagent.data.local.SkillStore
 import com.ba.aiagent.data.local.DesignStore
 import com.ba.aiagent.data.local.WorkspaceStore
+import com.ba.aiagent.domain.agent.BaTerminal
 
 class BaAiAgentApp : Application() {
     lateinit var database: AppDatabase
@@ -21,6 +22,8 @@ class BaAiAgentApp : Application() {
         private set
     lateinit var designStore: DesignStore
         private set
+    lateinit var terminal: BaTerminal
+        private set
 
     override fun onCreate() {
         super.onCreate()
@@ -30,5 +33,6 @@ class BaAiAgentApp : Application() {
         workspaceStore = WorkspaceStore(this)
         skillStore = SkillStore(this, workspaceStore)
         designStore = DesignStore(this)
+        terminal = BaTerminal(workspaceStore)
     }
 }

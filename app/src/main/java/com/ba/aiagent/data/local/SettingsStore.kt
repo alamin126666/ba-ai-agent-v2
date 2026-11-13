@@ -27,7 +27,6 @@ class SettingsStore(private val context: Context) {
         private val THEME_MODE = stringPreferencesKey("theme_mode") // dark | light | system
         private val ACCENT = stringPreferencesKey("accent") // orange | violet
         private val FAVOURITES = stringSetPreferencesKey("favourites")
-        private val TERMUX_BRIDGE = booleanPreferencesKey("termux_bridge")
         private val ACTIVE_DESIGN = stringPreferencesKey("active_design")
 
         const val DEFAULT_SYSTEM_PROMPT =
@@ -46,7 +45,6 @@ class SettingsStore(private val context: Context) {
     val themeMode: Flow<String> = context.dataStore.data.map { it[THEME_MODE] ?: "dark" }
     val accent: Flow<String> = context.dataStore.data.map { it[ACCENT] ?: "orange" }
     val favourites: Flow<Set<String>> = context.dataStore.data.map { it[FAVOURITES] ?: emptySet() }
-    val termuxBridge: Flow<Boolean> = context.dataStore.data.map { it[TERMUX_BRIDGE] ?: true }
     val activeDesign: Flow<String> = context.dataStore.data.map { it[ACTIVE_DESIGN] ?: "linear" }
 
     suspend fun setActiveProvider(v: String) = context.dataStore.edit { it[ACTIVE_PROVIDER] = v }
@@ -58,7 +56,6 @@ class SettingsStore(private val context: Context) {
     suspend fun setAgentPrompt(v: String) = context.dataStore.edit { it[AGENT_PROMPT] = v }
     suspend fun setThemeMode(v: String) = context.dataStore.edit { it[THEME_MODE] = v }
     suspend fun setAccent(v: String) = context.dataStore.edit { it[ACCENT] = v }
-    suspend fun setTermuxBridge(v: Boolean) = context.dataStore.edit { it[TERMUX_BRIDGE] = v }
     suspend fun setActiveDesign(v: String) = context.dataStore.edit { it[ACTIVE_DESIGN] = v }
 
     suspend fun toggleFavourite(modelId: String) = context.dataStore.edit { prefs ->

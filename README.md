@@ -25,10 +25,10 @@ Chat + Agent Mode + Terminal + Skills + Design, all on the phone, no VPS.
   Tools: list/read/write/create/edit (patch)/delete/search files,
   run_command, git_status. Every edit shows a diff (old red / new green)
   and needs Approve. Dangerous commands are blocked.
-- **Terminal** — built-in local shell on the phone (no VPS, no root).
-  Termux Bridge sends commands to the installed Termux app
-  (pkg, python, node, git) via `com.termux.RUN_COMMAND`.
-  Install Termux from F-Droid + Termux:API for the Bridge.
+- **Terminal** — BA Terminal, our own terminal built into the app
+  (no other app, no VPS, no root): one persistent local shell on
+  the phone. The agent and the Terminal tab share the session, so
+  `cd` sticks between commands. Dangerous commands are blocked.
 - **Skills** — built-in `/plan /fix /review /refactor /explain /test
   /commit /new /docs /ui`, auto-loaded when relevant, plus a Skill Store:
   install a SKILL.md from GitHub or create your own custom skill.

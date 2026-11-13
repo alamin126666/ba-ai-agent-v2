@@ -60,7 +60,6 @@ fun SettingsScreen(app: BaAiAgentApp, onOpenModels: () -> Unit, onOpenDesign: ()
     val agentPrompt by app.settingsStore.agentPrompt.collectAsState(initial = "")
     val themeMode by app.settingsStore.themeMode.collectAsState(initial = "dark")
     val accent by app.settingsStore.accent.collectAsState(initial = "orange")
-    val termux by app.settingsStore.termuxBridge.collectAsState(initial = true)
     var keyInputs by remember { mutableStateOf(mapOf<String, String>()) }
     var keyStatus by remember { mutableStateOf(mapOf<String, String>()) }
     var confirmClear by remember { mutableStateOf(false) }
@@ -145,10 +144,6 @@ fun SettingsScreen(app: BaAiAgentApp, onOpenModels: () -> Unit, onOpenDesign: ()
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text("Streaming", modifier = Modifier.weight(1f))
                 Switch(checked = streaming, onCheckedChange = { scope.launch { app.settingsStore.setStreaming(it) } })
-            }
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("Termux Bridge", modifier = Modifier.weight(1f))
-                Switch(checked = termux, onCheckedChange = { scope.launch { app.settingsStore.setTermuxBridge(it) } })
             }
             OutlinedTextField(value = sysPrompt, onValueChange = { scope.launch { app.settingsStore.setSystemPrompt(it) } }, label = { Text("Chat system prompt") }, modifier = Modifier.fillMaxWidth(), minLines = 3)
             OutlinedTextField(value = agentPrompt, onValueChange = { scope.launch { app.settingsStore.setAgentPrompt(it) } }, label = { Text("Agent system prompt") }, modifier = Modifier.fillMaxWidth(), minLines = 3)

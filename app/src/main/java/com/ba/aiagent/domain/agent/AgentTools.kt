@@ -1,10 +1,6 @@
 package com.ba.aiagent.domain.agent
 
-import android.content.Context
-import android.content.Intent
 import com.ba.aiagent.data.local.WorkspaceStore
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.jsonObject
@@ -108,8 +104,8 @@ class AgentTools(
     }
 }
 
-/** Local shell. Dangerous commands are refused here — the UI also asks first. */
-class ShellRunner(private val workspace: WorkspaceStore) {
+/** Local shell via the shared BA Terminal session. Dangerous commands are refused here — the UI also asks first. */
+class ShellRunner(private val terminal: BaTerminal) {
     private val blocked = listOf("rm -rf", "rm -rf /", "format", "su", "mkfs", "dd if=", ":(){", "shutdown", "reboot")
 
     fun isDangerous(command: String): Boolean {
@@ -117,38 +113,10 @@ class ShellRunner(private val workspace: WorkspaceStore) {
         return blocked.any { c.contains(it) } || c.startsWith("rm -rf")
     }
 
-    suspend fun run(command: String): ToolResult = withContext(Dispatchers.IO) {
+    suspend fun run(command: String): ToolResult {
         if (isDangerous(command)) {
-            return@withContext ToolResult(false, "Blocked dangerous command: $command")
+            return ToolResult(false, "Blocked dangerous command: $command")
         }
-        try {
-            val proc = ProcessBuilder("sh", "-c", command)
-                .directory(workspace.root)
-                .redirectErrorStream(true)
-                .start()
-            val finished = proc.waitFor(30, java.util.concurrent.TimeUnit.SECONDS)
-            if (!finished) {
-                proc.destroyForcibly()
-                return@withContext ToolResult(false, "Command timed out after 30s: $command")
-            }
-            val out = proc.inputStream.bufferedReader().readText()
-            ToolResult(proc.exitValue() == 0, out.ifBlank { "(no output, exit ${proc.exitValue()})" })
-        } catch (e: Exception) {
-            ToolResult(false, "Shell error: ${e.message}")
-        }
-    }
-
-    /** Send a command to installed Termux via RUN_COMMAND. Returns false if Termux/Termux:API is missing. */
-    fun sendToTermux(context: Context, command: String): Boolean {
-        return try {
-            val intent = Intent("com.termux.RUN_COMMAND").apply {
-                setClassName("com.termux", "com.termux.app.RunCommandService")
-                putExtra("com.termux.RUN_COMMAND_PATH", "/data/data/com.termux/files/usr/bin/sh")
-                putExtra("com.termux.RUN_COMMAND_ARGUMENTS", arrayOf("-c", command))
-                putExtra("com.termux.RUN_COMMAND_BACKGROUND", false)
-            }
-            context.startService(intent)
-            true
-        } catch (_: Exception) { false }
+        return terminal.runCommand(command)
     }
 }

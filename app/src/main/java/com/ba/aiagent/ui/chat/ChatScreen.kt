@@ -65,7 +65,7 @@ import kotlinx.coroutines.launch
 
 class ChatViewModel(private val app: BaAiAgentApp, private val sessionId: Long) : ViewModel() {
     private val api = AiApiClient()
-    private val tools = AgentTools(app.workspaceStore, ShellRunner(app.workspaceStore))
+    private val tools = AgentTools(app.workspaceStore, ShellRunner(app.terminal))
     private val engine = AgentEngine(api, tools)
 
     val messages = app.database.chatDao().messages(sessionId)
