@@ -10,6 +10,8 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import java.io.File
+import java.nio.file.Files
+import java.nio.file.attribute.PosixFilePermission
 import java.util.concurrent.TimeUnit
 
 /**
@@ -64,6 +66,7 @@ class BaLinux(private val context: Context, private val workspace: WorkspaceStor
             return false
         }
         if (readyMarker.exists() && File(rootfsDir, "bin/sh").exists()) {
+            writePkgShim()
             ready = true
             _state.value = "BA Linux ready (Alpine)"
             return true
@@ -86,6 +89,7 @@ class BaLinux(private val context: Context, private val workspace: WorkspaceStor
             }
             File(rootfsDir, "workspace").mkdirs()
             File(rootfsDir, "root").mkdirs()
+            writePkgShim()
             readyMarker.createNewFile()
             ready = true
             _state.value = "BA Linux ready (Alpine)"
@@ -99,6 +103,39 @@ class BaLinux(private val context: Context, private val workspace: WorkspaceStor
             _state.value = "BA Linux setup failed — using the system shell."
             log("\nBA Linux setup failed (${e.message}). Falling back to the system shell.\n")
             false
+        }
+    }
+
+    /**
+     * Termux-style `pkg` command inside the sandbox, so Termux habits
+     * work: `pkg update`, `pkg install python`, `pkg upgrade`, `pkg
+     * search`. It is just a wrapper around Alpine's `apk` — it strips
+     * `-y` (apk never asks) and maps `python` to `python3`. Written on
+     * every setup, so phones that already unpacked the rootfs get it too.
+     */
+    private fun writePkgShim() {
+        try {
+            val pkg = File(rootfsDir, "usr/local/bin/pkg")
+            pkg.parentFile?.mkdirs()
+            pkg.writeText(PKG_SCRIPT)
+            try {
+                Files.setPosixFilePermissions(
+                    pkg.toPath(),
+                    setOf(
+                        PosixFilePermission.OWNER_READ,
+                        PosixFilePermission.OWNER_WRITE,
+                        PosixFilePermission.OWNER_EXECUTE,
+                        PosixFilePermission.GROUP_READ,
+                        PosixFilePermission.GROUP_EXECUTE,
+                        PosixFilePermission.OTHERS_READ,
+                        PosixFilePermission.OTHERS_EXECUTE
+                    )
+                )
+            } catch (_: Exception) {
+                pkg.setExecutable(true)
+            }
+        } catch (_: Exception) {
+            // A missing pkg shim must never block the shell.
         }
     }
 
@@ -148,4 +185,35 @@ class BaLinux(private val context: Context, private val workspace: WorkspaceStor
                 false to (e.message ?: "error")
             }
         }
+
+    companion object {
+        // In a Kotlin raw string, `$` followed by a letter starts an
+        // interpolation, so shell variables use ${'$'} below.
+        private const val PKG_SCRIPT = """#!/bin/sh
+# pkg — Termux-style wrapper around Alpine's apk, for BA Linux.
+# Lets Termux habits work: pkg update / pkg install / pkg upgrade / pkg search.
+# Strips -y/--yes (apk never asks) and maps python -> python3.
+filtered=""
+for a in "$@"; do
+  case "${'$'}a" in
+    -y|--yes) ;;
+    python) filtered="${'$'}filtered python3" ;;
+    *) filtered="${'$'}filtered ${'$'}a" ;;
+  esac
+done
+set -- ${'$'}filtered
+cmd="$1"
+[ $# -gt 0 ] && shift
+case "${'$'}cmd" in
+  update) exec apk update ;;
+  upgrade) exec apk upgrade "$@" ;;
+  install) exec apk add "$@" ;;
+  uninstall|remove) exec apk del "$@" ;;
+  search) exec apk search "$@" ;;
+  list-installed|list) exec apk info ;;
+  show) exec apk info "$@" ;;
+  *) echo "pkg: unknown command '${'$'}cmd'"; echo "Try: pkg update, pkg install <name>, pkg upgrade, pkg search <name>"; exit 1 ;;
+esac
+"""
+    }
 }
