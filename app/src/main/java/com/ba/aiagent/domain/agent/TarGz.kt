@@ -1,5 +1,6 @@
 package com.ba.aiagent.domain.agent
 
+import java.io.BufferedInputStream
 import java.io.File
 import java.io.InputStream
 import java.nio.file.Files
@@ -7,19 +8,27 @@ import java.nio.file.attribute.PosixFilePermission
 import java.util.zip.GZIPInputStream
 
 /**
- * Minimal .tar.gz extractor (no extra dependency).
+ * Minimal tar extractor (no extra dependency). Accepts a .tar.gz or a
+ * plain .tar stream — the format is detected from the magic bytes, so
+ * it still works if the packager already decompressed the archive.
  * Handles regular files, directories, symlinks and hardlinks; skips
  * device nodes and anything else. Rejects entries that would escape
  * the destination directory.
  */
 object TarGz {
-    fun extract(gzippedTar: InputStream, destDir: File) {
-        GZIPInputStream(gzippedTar).use { gz ->
+    fun extract(archive: InputStream, destDir: File) {
+        val buffered = if (archive is BufferedInputStream) archive else BufferedInputStream(archive)
+        buffered.mark(2)
+        val b0 = buffered.read()
+        val b1 = buffered.read()
+        buffered.reset()
+        val tar: InputStream = if (b0 == 0x1F && b1 == 0x8B) GZIPInputStream(buffered) else buffered
+        tar.use { input ->
             var pendingName: String? = null
             var pendingLink: String? = null
             while (true) {
                 val header = ByteArray(512)
-                if (!readFully(gz, header)) return
+                if (!readFully(input, header)) return
                 if (header.all { it == 0.toByte() }) {
                     // End of archive is two zero blocks; one is enough to stop.
                     return
@@ -31,10 +40,10 @@ object TarGz {
                 val mode = parseOctal(header, 100, 8)
                 val dataBlocks = ((size + 511) / 512).toInt()
                 val data = ByteArray(size.toInt().coerceAtLeast(0))
-                if (size > 0) readFully(gz, data)
+                if (size > 0) readFully(input, data)
                 // Skip padding to the next 512-byte boundary.
                 val pad = dataBlocks * 512 - size
-                if (pad > 0) skipFully(gz, pad)
+                if (pad > 0) skipFully(input, pad)
 
                 when (type) {
                     'L' -> { pendingName = String(data, Charsets.UTF_8).trimEnd('\u0000') }

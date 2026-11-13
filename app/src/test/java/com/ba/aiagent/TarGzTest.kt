@@ -30,18 +30,42 @@ class TarGzTest {
         val dest = Files.createTempDirectory("targz-test").toFile()
         try {
             TarGz.extract(ByteArrayInputStream(gz), dest)
-            assertEquals("hello ba\n", File(dest, "etc/hello.txt").readText())
-            assertEquals("#!/bin/sh\n", File(dest, "bin/run.sh").readText())
-            val runPerms = Files.getPosixFilePermissions(File(dest, "bin/run.sh").toPath())
-            assertTrue("run.sh should be owner-executable", runPerms.contains(PosixFilePermission.OWNER_EXECUTE))
-            assertFalse("run.sh must not be world-writable", runPerms.contains(PosixFilePermission.OTHERS_WRITE))
-            assertTrue(Files.isSymbolicLink(File(dest, "bin/link").toPath()))
-            assertEquals("run.sh", Files.readSymbolicLink(File(dest, "bin/link").toPath()).toString())
-            assertFalse("path traversal entry must not escape", File(dest, "evil.txt").exists())
-            assertFalse("path traversal entry must not escape", File(dest.parentFile, "evil.txt").exists())
+            assertExtracted(dest)
         } finally {
             dest.deleteRecursively()
         }
+    }
+
+    @Test
+    fun extractsPlainTarToo() {
+        // The APK packager may decompress a .tar.gz asset into a plain
+        // .tar, so the extractor must handle both.
+        val tar = buildTar(
+            TarEntry.Dir("etc"),
+            TarEntry.File("etc/hello.txt", "hello ba\n".toByteArray(), 0x1A4),
+            TarEntry.File("bin/run.sh", "#!/bin/sh\n".toByteArray(), 0x1ED),
+            TarEntry.Symlink("bin/link", "run.sh"),
+            TarEntry.File("../evil.txt", "nope".toByteArray(), 0x1A4)
+        )
+        val dest = Files.createTempDirectory("tar-test").toFile()
+        try {
+            TarGz.extract(ByteArrayInputStream(tar), dest)
+            assertExtracted(dest)
+        } finally {
+            dest.deleteRecursively()
+        }
+    }
+
+    private fun assertExtracted(dest: File) {
+        assertEquals("hello ba\n", File(dest, "etc/hello.txt").readText())
+        assertEquals("#!/bin/sh\n", File(dest, "bin/run.sh").readText())
+        val runPerms = Files.getPosixFilePermissions(File(dest, "bin/run.sh").toPath())
+        assertTrue("run.sh should be owner-executable", runPerms.contains(PosixFilePermission.OWNER_EXECUTE))
+        assertFalse("run.sh must not be world-writable", runPerms.contains(PosixFilePermission.OTHERS_WRITE))
+        assertTrue(Files.isSymbolicLink(File(dest, "bin/link").toPath()))
+        assertEquals("run.sh", Files.readSymbolicLink(File(dest, "bin/link").toPath()).toString())
+        assertFalse("path traversal entry must not escape", File(dest, "evil.txt").exists())
+        assertFalse("path traversal entry must not escape", File(dest.parentFile, "evil.txt").exists())
     }
 
     private sealed interface TarEntry {
@@ -52,6 +76,13 @@ class TarGzTest {
 
     /** Builds a small ustar .tar.gz in memory for the test. */
     private fun buildTarGz(vararg entries: TarEntry): ByteArray {
+        val gz = ByteArrayOutputStream()
+        GZIPOutputStream(gz).use { it.write(buildTar(*entries)) }
+        return gz.toByteArray()
+    }
+
+    /** Builds a small ustar .tar (no gzip) in memory for the test. */
+    private fun buildTar(vararg entries: TarEntry): ByteArray {
         val tar = ByteArrayOutputStream()
         for (e in entries) {
             when (e) {
@@ -65,9 +96,7 @@ class TarGzTest {
             }
         }
         tar.write(ByteArray(1024)) // end-of-archive zero blocks
-        val gz = ByteArrayOutputStream()
-        GZIPOutputStream(gz).use { it.write(tar.toByteArray()) }
-        return gz.toByteArray()
+        return tar.toByteArray()
     }
 
     private fun header(name: String, size: Long, type: Char, mode: Int, link: String): ByteArray {

@@ -30,9 +30,9 @@ jobs:
       - name: Download Alpine rootfs (BA Linux)
         run: |
           mkdir -p app/src/main/assets/linux
-          curl -fsSL -o app/src/main/assets/linux/alpine-aarch64.tar.gz \
+          curl -fsSL -o app/src/main/assets/linux/alpine-aarch64.bin \
             https://dl-cdn.alpinelinux.org/alpine/v3.24/releases/aarch64/alpine-minirootfs-3.24.4-aarch64.tar.gz
-          echo "4b14c18f7e90a063b61462ea1462a5732c154bf6adad594974fe6487cd98a8de  app/src/main/assets/linux/alpine-aarch64.tar.gz" | sha256sum -c -
+          echo "4b14c18f7e90a063b61462ea1462a5732c154bf6adad594974fe6487cd98a8de  app/src/main/assets/linux/alpine-aarch64.bin" | sha256sum -c -
       - name: Test + Lint + Release APK
         run: ./gradlew testDebugUnitTest lint assembleRelease
       - name: Upload Release APK

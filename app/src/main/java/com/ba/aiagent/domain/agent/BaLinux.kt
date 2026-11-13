@@ -73,7 +73,7 @@ class BaLinux(private val context: Context, private val workspace: WorkspaceStor
             _state.value = "Setting up BA Linux… (unpacking Alpine)"
             rootfsDir.mkdirs()
             homeDir.mkdirs()
-            context.assets.open("linux/alpine-aarch64.tar.gz").use { input ->
+            context.assets.open("linux/alpine-aarch64.bin").use { input ->
                 TarGz.extract(input, rootfsDir)
             }
             // Minimal network config so apk and friends can reach the internet.
