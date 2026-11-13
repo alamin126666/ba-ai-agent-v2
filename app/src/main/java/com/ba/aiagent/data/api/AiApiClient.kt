@@ -6,6 +6,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.withContext
+import kotlinx.serialization.builtins.serializer
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
@@ -81,11 +82,11 @@ class AiApiClient {
                 }
                 val bodyJson = buildString {
                     append("{\"model\":")
-                    append(json.encodeToString(model))
+                    append(json.encodeToString(String.serializer(), model))
                     append(",\"messages\":[")
                     append(msgs.joinToString(",") { m ->
-                        "{\"role\":" + json.encodeToString(m.role) +
-                            ",\"content\":" + json.encodeToString(m.content) + "}"
+                        "{\"role\":" + json.encodeToString(String.serializer(), m.role) +
+                            ",\"content\":" + json.encodeToString(String.serializer(), m.content) + "}"
                     })
                     append("],\"temperature\":").append(temperature)
                     append(",\"max_tokens\":").append(maxTokens)
@@ -137,17 +138,17 @@ class AiApiClient {
     ): String = withContext(Dispatchers.IO) {
         val bodyJson = buildString {
             append("{\"model\":")
-            append(json.encodeToString(model))
+            append(json.encodeToString(String.serializer(), model))
             append(",\"max_tokens\":").append(maxTokens)
             append(",\"temperature\":").append(temperature)
             if (systemPrompt.isNotBlank()) {
                 append(",\"system\":")
-                append(json.encodeToString(systemPrompt))
+                append(json.encodeToString(String.serializer(), systemPrompt))
             }
             append(",\"messages\":[")
             append(messages.filter { it.role != "system" }.joinToString(",") { m ->
-                "{\"role\":" + json.encodeToString(m.role) +
-                    ",\"content\":" + json.encodeToString(m.content) + "}"
+                "{\"role\":" + json.encodeToString(String.serializer(), m.role) +
+                    ",\"content\":" + json.encodeToString(String.serializer(), m.content) + "}"
             })
             append("]}")
         }
@@ -176,7 +177,7 @@ class AiApiClient {
         val contents = messages.filter { it.role != "system" }.joinToString(",") { m ->
             val role = if (m.role == "assistant") "model" else "user"
             "{\"role\":\"$role\",\"parts\":[{\"text\":" +
-                json.encodeToString(m.content) + "}]}"
+                json.encodeToString(String.serializer(), m.content) + "}]}"
         }
         val bodyJson = "{\"contents\":[$contents],\"generationConfig\":{\"temperature\":$temperature,\"maxOutputTokens\":$maxTokens}}" +
             if (systemPrompt.isNotBlank()) "" else ""
