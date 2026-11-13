@@ -22,6 +22,10 @@ android {
     buildTypes {
         release {
             isMinifyEnabled = false
+            // Sign the release APK with the debug key so assembleRelease
+            // produces a signed, installable app-release.apk (without a
+            // signing config AGP only writes app-release-unsigned.apk).
+            signingConfig = signingConfigs.getByName("debug")
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
